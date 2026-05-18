@@ -96,11 +96,15 @@ class DuplicateFinderApp(QMainWindow):
         
         # Set dynamic column resizing
         header = self.tree.header()
+        header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-        self.tree.setColumnWidth(3, 60)
+        
+        self.tree.setColumnWidth(1, 100)
+        self.tree.setColumnWidth(2, 160)
+        self.tree.setColumnWidth(3, 70)
         
         self.tree.itemSelectionChanged.connect(self.preview_selected_item)
         self.splitter.addWidget(self.tree)
