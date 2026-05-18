@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 from scanner import scan_directory
 
@@ -152,6 +152,7 @@ class DuplicateFinderApp(QMainWindow):
         self.current_duplicates = []
         self.current_directory = ""
         self.last_stats = {}
+        self.showMaximized()
 
     def browse_directory(self):
         directory = QFileDialog.getExistingDirectory(self, "Select Directory")
