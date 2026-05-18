@@ -17,7 +17,7 @@ def get_file_hash(filepath, chunk_size=8192):
         return None
     return hasher.hexdigest()
 
-def scan_directory(directory, scan_photos=True, scan_videos=True, progress_callback=None):
+def scan_directory(directory, scan_photos=True, scan_videos=True, status_callback=None):
     """
     Scans a directory recursively and returns a list of duplicate groups.
     Each group is a list of file paths that are identical.
@@ -31,6 +31,8 @@ def scan_directory(directory, scan_photos=True, scan_videos=True, progress_callb
     # 1. Group files by size to avoid hashing everything
     size_dict = defaultdict(list)
     total_files_found = 0
+    images_found = 0
+    videos_found = 0
     
     for root, _, files in os.walk(directory):
         # Skip Trash directory if it exists
@@ -39,14 +41,45 @@ def scan_directory(directory, scan_photos=True, scan_videos=True, progress_callb
             
         for file in files:
             ext = os.path.splitext(file)[1].lower()
-            if ext in allowed_exts:
+            is_photo = ext in PHOTO_EXTENSIONS
+            is_video = ext in VIDEO_EXTENSIONS
+            
+            if (is_photo and scan_photos) or (is_video and scan_videos):
                 filepath = os.path.join(root, file)
                 try:
                     size = os.path.getsize(filepath)
                     size_dict[size].append(filepath)
                     total_files_found += 1
+                    if is_photo:
+                        images_found += 1
+                    elif is_video:
+                        videos_found += 1
+                    
+                    # Update status dynamically during discovery
+                    if status_callback and total_files_found % 50 == 0:
+                        status_callback({
+                            'phase': 'discovering',
+                            'total_files': total_files_found,
+                            'images': images_found,
+                            'videos': videos_found,
+                            'duplicate_groups': 0,
+                            'duplicate_files': 0,
+                            'progress': 0
+                        })
                 except OSError:
                     pass
+
+    # Send final discovery update
+    if status_callback:
+        status_callback({
+            'phase': 'hashing',
+            'total_files': total_files_found,
+            'images': images_found,
+            'videos': videos_found,
+            'duplicate_groups': 0,
+            'duplicate_files': 0,
+            'progress': 0
+        })
 
     # Filter out sizes with only 1 file
     potential_duplicates = {size: paths for size, paths in size_dict.items() if len(paths) > 1}
@@ -55,6 +88,8 @@ def scan_directory(directory, scan_photos=True, scan_videos=True, progress_callb
     duplicates = []
     files_to_hash = sum(len(paths) for paths in potential_duplicates.values())
     hashed_count = 0
+    duplicate_groups_count = 0
+    duplicate_files_count = 0
     
     for size, paths in potential_duplicates.items():
         hash_dict = defaultdict(list)
@@ -64,9 +99,17 @@ def scan_directory(directory, scan_photos=True, scan_videos=True, progress_callb
                 hash_dict[file_hash].append(filepath)
                 
             hashed_count += 1
-            if progress_callback:
-                progress = int((hashed_count / files_to_hash) * 100)
-                progress_callback(progress)
+            if status_callback and hashed_count % 10 == 0:
+                progress = int((hashed_count / files_to_hash) * 100) if files_to_hash > 0 else 0
+                status_callback({
+                    'phase': 'hashing',
+                    'total_files': total_files_found,
+                    'images': images_found,
+                    'videos': videos_found,
+                    'duplicate_groups': duplicate_groups_count,
+                    'duplicate_files': duplicate_files_count,
+                    'progress': progress
+                })
                 
         # Any hash with > 1 path is a duplicate group
         for file_hash, identical_paths in hash_dict.items():
@@ -76,8 +119,18 @@ def scan_directory(directory, scan_photos=True, scan_videos=True, progress_callb
                     'size': size,
                     'files': identical_paths
                 })
+                duplicate_groups_count += 1
+                duplicate_files_count += len(identical_paths)
 
-    if progress_callback:
-        progress_callback(100)
+    if status_callback:
+        status_callback({
+            'phase': 'finished',
+            'total_files': total_files_found,
+            'images': images_found,
+            'videos': videos_found,
+            'duplicate_groups': duplicate_groups_count,
+            'duplicate_files': duplicate_files_count,
+            'progress': 100
+        })
         
     return duplicates

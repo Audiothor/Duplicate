@@ -9,10 +9,12 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap
 
+__version__ = "1.1.0"
+
 from scanner import scan_directory
 
 class ScannerThread(QThread):
-    progress_updated = pyqtSignal(int)
+    stats_updated = pyqtSignal(dict)
     scan_finished = pyqtSignal(list)
 
     def __init__(self, directory, scan_photos, scan_videos):
@@ -26,17 +28,17 @@ class ScannerThread(QThread):
             self.directory, 
             self.scan_photos, 
             self.scan_videos, 
-            self.update_progress
+            self.update_stats
         )
         self.scan_finished.emit(duplicates)
 
-    def update_progress(self, val):
-        self.progress_updated.emit(val)
+    def update_stats(self, stats_dict):
+        self.stats_updated.emit(stats_dict)
 
 class DuplicateFinderApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Duplicate Finder & Manager")
+        self.setWindowTitle(f"Duplicate Finder & Manager v{__version__}")
         self.resize(800, 600)
         
         # Main widget and layout
@@ -98,12 +100,17 @@ class DuplicateFinderApp(QMainWindow):
         # Bottom Panel
         bottom_panel = QHBoxLayout()
         self.status_label = QLabel("Ready")
+        
+        self.delete_empty_checkbox = QCheckBox("Delete empty folders")
+        self.delete_empty_checkbox.setChecked(True)
+        
         self.trash_btn = QPushButton("Move Selected to Trash")
         self.trash_btn.clicked.connect(self.move_to_trash)
         self.trash_btn.setEnabled(False)
         
         bottom_panel.addWidget(self.status_label)
         bottom_panel.addStretch()
+        bottom_panel.addWidget(self.delete_empty_checkbox)
         bottom_panel.addWidget(self.trash_btn)
         layout.addLayout(bottom_panel)
         
@@ -138,9 +145,31 @@ class DuplicateFinderApp(QMainWindow):
             self.photo_checkbox.isChecked(), 
             self.video_checkbox.isChecked()
         )
-        self.scanner_thread.progress_updated.connect(self.progress_bar.setValue)
+        self.scanner_thread.stats_updated.connect(self.on_stats_updated)
         self.scanner_thread.scan_finished.connect(self.on_scan_finished)
         self.scanner_thread.start()
+
+    def on_stats_updated(self, stats):
+        self.progress_bar.setValue(stats['progress'])
+        
+        phase = stats['phase']
+        total = stats['total_files']
+        images = stats['images']
+        videos = stats['videos']
+        groups = stats['duplicate_groups']
+        files = stats['duplicate_files']
+        progress = stats['progress']
+        
+        if phase == 'discovering':
+            status_text = f"<b>Discovering files...</b> | Found: <b>{total}</b> (📸 {images} | 🎥 {videos})"
+        elif phase == 'hashing':
+            status_text = f"<b>Comparing files...</b> | Scanned: <b>{total}</b> (📸 {images} | 🎥 {videos}) | Duplicates: <b>{groups}</b> groups ({files} files) | ⏳ {progress}%"
+        elif phase == 'finished':
+            status_text = f"<b>Scan complete!</b> | Total: <b>{total}</b> | Duplicates: <b>{groups}</b> groups ({files} files)"
+        else:
+            status_text = f"Scanning... {progress}%"
+            
+        self.status_label.setText(status_text)
 
     def format_size(self, size_bytes):
         for unit in ['B', 'KB', 'MB', 'GB']:
@@ -155,12 +184,13 @@ class DuplicateFinderApp(QMainWindow):
         self.current_duplicates = duplicates
         
         if not duplicates:
-            self.status_label.setText("No duplicates found.")
+            self.status_label.setText("<b>No duplicates found.</b>")
             QMessageBox.information(self, "Result", "No duplicates found!")
             return
             
+        total_files = sum(len(group['files']) for group in duplicates)
         trash_path = os.path.normpath(os.path.join(self.current_directory, "Trash"))
-        self.status_label.setText(f"Found {len(duplicates)} duplicate groups. Trash: {trash_path}")
+        self.status_label.setText(f"<b>Scan complete!</b> | Found <b>{len(duplicates)}</b> duplicate groups ({total_files} files). Trash: <i>{trash_path}</i>")
         self.trash_btn.setEnabled(True)
         
         for i, group in enumerate(duplicates):
@@ -282,27 +312,37 @@ class DuplicateFinderApp(QMainWindow):
                     except Exception as e:
                         print(f"Error moving {filepath}: {e}")
 
-            # Check and move empty directories to Trash
+            # Check and delete/move empty directories
+            delete_empty = self.delete_empty_checkbox.isChecked()
             for p_dir in sorted(parent_dirs_to_check, key=len, reverse=True):
                 current_p = p_dir
-                # Don't trash the root directory or the Trash folder itself
+                # Don't trash or delete the root directory or the Trash folder itself
                 while current_p and current_p != self.current_directory and os.path.normpath(current_p) != os.path.normpath(trash_dir):
                     if os.path.exists(current_p) and os.path.isdir(current_p) and not os.listdir(current_p):
-                        dir_name = os.path.basename(current_p)
-                        dest_dir_path = os.path.join(trash_dir, dir_name)
-                        
-                        # Handle directory name collisions in Trash
-                        d_counter = 1
-                        while os.path.exists(dest_dir_path):
-                            dest_dir_path = os.path.join(trash_dir, f"{dir_name}_{d_counter}")
-                            d_counter += 1
+                        if delete_empty:
+                            try:
+                                parent_of_current = os.path.dirname(current_p)
+                                os.rmdir(current_p)
+                                current_p = parent_of_current # Check the parent next
+                            except Exception as e:
+                                print(f"Error deleting empty directory {current_p}: {e}")
+                                break
+                        else:
+                            dir_name = os.path.basename(current_p)
+                            dest_dir_path = os.path.join(trash_dir, dir_name)
                             
-                        try:
-                            parent_of_current = os.path.dirname(current_p)
-                            shutil.move(current_p, dest_dir_path)
-                            current_p = parent_of_current # Check the parent next
-                        except:
-                            break
+                            # Handle directory name collisions in Trash
+                            d_counter = 1
+                            while os.path.exists(dest_dir_path):
+                                dest_dir_path = os.path.join(trash_dir, f"{dir_name}_{d_counter}")
+                                d_counter += 1
+                                
+                            try:
+                                parent_of_current = os.path.dirname(current_p)
+                                shutil.move(current_p, dest_dir_path)
+                                current_p = parent_of_current # Check the parent next
+                            except:
+                                break
                     else:
                         break
                         
