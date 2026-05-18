@@ -5,7 +5,8 @@ from datetime import datetime
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLineEdit, QFileDialog, 
                              QCheckBox, QTreeWidget, QTreeWidgetItem, QProgressBar, 
-                             QMessageBox, QLabel, QSplitter, QSizePolicy)
+                             QMessageBox, QLabel, QSplitter, QSizePolicy,
+                             QHeaderView)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap
 
@@ -39,7 +40,7 @@ class DuplicateFinderApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"Duplicate Finder & Manager v{__version__}")
-        self.resize(800, 600)
+        self.resize(1024, 768)
         
         # Main widget and layout
         main_widget = QWidget()
@@ -83,7 +84,15 @@ class DuplicateFinderApp(QMainWindow):
         # Tree Widget for Duplicates
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["File / Group", "Size", "Date Modified", "Trash?"])
-        self.tree.setColumnWidth(0, 300)
+        
+        # Set dynamic column resizing
+        header = self.tree.header()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self.tree.setColumnWidth(3, 60)
+        
         self.tree.itemSelectionChanged.connect(self.preview_selected_item)
         self.splitter.addWidget(self.tree)
         
@@ -95,7 +104,7 @@ class DuplicateFinderApp(QMainWindow):
         self.preview_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.splitter.addWidget(self.preview_label)
         
-        self.splitter.setSizes([500, 300])
+        self.splitter.setSizes([700, 324])
         
         # Bottom Panel
         bottom_panel = QHBoxLayout()
