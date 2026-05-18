@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 from scanner import scan_directory
 
@@ -58,6 +58,13 @@ class DuplicateFinderApp(QMainWindow):
         
         # Top Panel
         top_panel = QHBoxLayout()
+        
+        self.open_dir_btn = QPushButton("📂")
+        self.open_dir_btn.setToolTip("Open folder in File Explorer")
+        self.open_dir_btn.setFixedWidth(35)
+        self.open_dir_btn.setEnabled(False)
+        self.open_dir_btn.clicked.connect(self.open_in_explorer)
+        
         self.dir_input = QLineEdit()
         self.dir_input.setPlaceholderText("Select a directory to scan...")
         self.dir_input.setReadOnly(True)
@@ -73,6 +80,7 @@ class DuplicateFinderApp(QMainWindow):
         self.scan_btn = QPushButton("Scan")
         self.scan_btn.clicked.connect(self.start_scan)
         
+        top_panel.addWidget(self.open_dir_btn)
         top_panel.addWidget(self.dir_input)
         top_panel.addWidget(browse_btn)
         top_panel.addWidget(self.photo_checkbox)
@@ -143,12 +151,23 @@ class DuplicateFinderApp(QMainWindow):
         self.scanner_thread = None
         self.current_duplicates = []
         self.current_directory = ""
+        self.last_stats = {}
 
     def browse_directory(self):
         directory = QFileDialog.getExistingDirectory(self, "Select Directory")
         if directory:
             self.dir_input.setText(directory)
             self.current_directory = directory
+            self.open_dir_btn.setEnabled(True)
+
+    def open_in_explorer(self):
+        if self.current_directory and os.path.exists(self.current_directory):
+            try:
+                os.startfile(os.path.normpath(self.current_directory))
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not open directory:\n{e}")
+        else:
+            QMessageBox.warning(self, "Error", "Directory does not exist or is invalid.")
 
     def start_scan(self):
         if not self.current_directory:
@@ -176,22 +195,29 @@ class DuplicateFinderApp(QMainWindow):
         self.scanner_thread.start()
 
     def on_stats_updated(self, stats):
+        self.last_stats = stats
         self.progress_bar.setValue(stats['progress'])
         
         phase = stats['phase']
         total = stats['total_files']
         images = stats['images']
         videos = stats['videos']
+        others = stats.get('others_remaining', 0)
         groups = stats['duplicate_groups']
         files = stats['duplicate_files']
         progress = stats['progress']
         
         if phase == 'discovering':
-            status_text = f"<b>Discovering files...</b> | Found: <b>{total}</b> (📸 {images} | 🎥 {videos})"
+            status_text = f"<b>Discovering files...</b> | Found: <b>{total}</b> (📸 {images} | 🎥 {videos}) | Others remaining: <b>{others}</b>"
         elif phase == 'hashing':
-            status_text = f"<b>Comparing files...</b> | Scanned: <b>{total}</b> (📸 {images} | 🎥 {videos}) | Duplicates: <b>{groups}</b> groups ({files} files) | ⏳ {progress}%"
+            status_text = f"<b>Comparing files...</b> | Scanned: <b>{total}</b> (📸 {images} | 🎥 {videos}) | Others remaining: <b>{others}</b> | Duplicates: <b>{groups}</b> groups ({files} files) | ⏳ {progress}%"
         elif phase == 'finished':
-            status_text = f"<b>Scan complete!</b> | Total: <b>{total}</b> | Duplicates: <b>{groups}</b> groups ({files} files)"
+            status_text = (
+                f"<b>Scan complete!</b> | "
+                f"Scanned: <b>{total}</b> (📸 {images} photos | 🎥 {videos} videos) | "
+                f"Others remaining: <b>{others}</b> | "
+                f"Duplicates: <b>{groups}</b> groups ({files} files)"
+            )
         else:
             status_text = f"Scanning... {progress}%"
             
@@ -209,14 +235,34 @@ class DuplicateFinderApp(QMainWindow):
         self.scan_btn.setEnabled(True)
         self.current_duplicates = duplicates
         
+        stats = getattr(self, 'last_stats', {})
+        total = stats.get('total_files', 0)
+        images = stats.get('images', 0)
+        videos = stats.get('videos', 0)
+        others = stats.get('others_remaining', 0)
+        groups = stats.get('duplicate_groups', 0)
+        files = stats.get('duplicate_files', 0)
+        
+        trash_path = os.path.normpath(os.path.join(self.current_directory, "Trash"))
+        
         if not duplicates:
-            self.status_label.setText("<b>No duplicates found.</b>")
+            status_text = (
+                f"<b>Scan complete!</b> No duplicates found. | "
+                f"Scanned: <b>{total}</b> (📸 {images} photos | 🎥 {videos} videos) | "
+                f"Others remaining: <b>{others}</b>"
+            )
+            self.status_label.setText(status_text)
             QMessageBox.information(self, "Result", "No duplicates found!")
             return
             
-        total_files = sum(len(group['files']) for group in duplicates)
-        trash_path = os.path.normpath(os.path.join(self.current_directory, "Trash"))
-        self.status_label.setText(f"<b>Scan complete!</b> | Found <b>{len(duplicates)}</b> duplicate groups ({total_files} files). Trash: <i>{trash_path}</i>")
+        status_text = (
+            f"<b>Scan complete!</b> | "
+            f"Scanned: <b>{total}</b> (📸 {images} photos | 🎥 {videos} videos) | "
+            f"Others remaining: <b>{others}</b> | "
+            f"Duplicates: <b>{groups}</b> groups ({files} files) | "
+            f"Trash: <i>{trash_path}</i>"
+        )
+        self.status_label.setText(status_text)
         self.trash_btn.setEnabled(True)
         
         for i, group in enumerate(duplicates):

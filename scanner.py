@@ -30,9 +30,9 @@ def scan_directory(directory, scan_photos=True, scan_videos=True, status_callbac
 
     # 1. Group files by size to avoid hashing everything
     size_dict = defaultdict(list)
-    total_files_found = 0
-    images_found = 0
-    videos_found = 0
+    total_files_in_dir = 0
+    scanned_images = 0
+    scanned_videos = 0
     
     for root, _, files in os.walk(directory):
         # Skip Trash directory if it exists
@@ -44,24 +44,30 @@ def scan_directory(directory, scan_photos=True, scan_videos=True, status_callbac
             is_photo = ext in PHOTO_EXTENSIONS
             is_video = ext in VIDEO_EXTENSIONS
             
+            total_files_in_dir += 1
+            
             if (is_photo and scan_photos) or (is_video and scan_videos):
                 filepath = os.path.join(root, file)
                 try:
                     size = os.path.getsize(filepath)
                     size_dict[size].append(filepath)
-                    total_files_found += 1
-                    if is_photo:
-                        images_found += 1
-                    elif is_video:
-                        videos_found += 1
                     
+                    if is_photo:
+                        scanned_images += 1
+                    elif is_video:
+                        scanned_videos += 1
+                        
                     # Update status dynamically during discovery
-                    if status_callback and total_files_found % 50 == 0:
+                    scanned_total = scanned_images + scanned_videos
+                    others_remaining = total_files_in_dir - scanned_total
+                    
+                    if status_callback and scanned_total % 50 == 0:
                         status_callback({
                             'phase': 'discovering',
-                            'total_files': total_files_found,
-                            'images': images_found,
-                            'videos': videos_found,
+                            'total_files': scanned_total,
+                            'images': scanned_images,
+                            'videos': scanned_videos,
+                            'others_remaining': others_remaining,
                             'duplicate_groups': 0,
                             'duplicate_files': 0,
                             'progress': 0
@@ -70,12 +76,16 @@ def scan_directory(directory, scan_photos=True, scan_videos=True, status_callbac
                     pass
 
     # Send final discovery update
+    scanned_total = scanned_images + scanned_videos
+    others_remaining = total_files_in_dir - scanned_total
+    
     if status_callback:
         status_callback({
             'phase': 'hashing',
-            'total_files': total_files_found,
-            'images': images_found,
-            'videos': videos_found,
+            'total_files': scanned_total,
+            'images': scanned_images,
+            'videos': scanned_videos,
+            'others_remaining': others_remaining,
             'duplicate_groups': 0,
             'duplicate_files': 0,
             'progress': 0
@@ -103,9 +113,10 @@ def scan_directory(directory, scan_photos=True, scan_videos=True, status_callbac
                 progress = int((hashed_count / files_to_hash) * 100) if files_to_hash > 0 else 0
                 status_callback({
                     'phase': 'hashing',
-                    'total_files': total_files_found,
-                    'images': images_found,
-                    'videos': videos_found,
+                    'total_files': scanned_total,
+                    'images': scanned_images,
+                    'videos': scanned_videos,
+                    'others_remaining': others_remaining,
                     'duplicate_groups': duplicate_groups_count,
                     'duplicate_files': duplicate_files_count,
                     'progress': progress
@@ -125,9 +136,10 @@ def scan_directory(directory, scan_photos=True, scan_videos=True, status_callbac
     if status_callback:
         status_callback({
             'phase': 'finished',
-            'total_files': total_files_found,
-            'images': images_found,
-            'videos': videos_found,
+            'total_files': scanned_total,
+            'images': scanned_images,
+            'videos': scanned_videos,
+            'others_remaining': others_remaining,
             'duplicate_groups': duplicate_groups_count,
             'duplicate_files': duplicate_files_count,
             'progress': 100
