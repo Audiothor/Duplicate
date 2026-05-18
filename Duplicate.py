@@ -40,7 +40,16 @@ class DuplicateFinderApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"Duplicate Finder & Manager v{__version__}")
-        self.resize(1024, 768)
+        
+        # Center the window on the primary screen with a width of 1200
+        screen = QApplication.primaryScreen()
+        if screen:
+            rect = screen.availableGeometry()
+            x = (rect.width() - 1200) // 2
+            y = (rect.height() - 768) // 2
+            self.setGeometry(x, y, 1200, 768)
+        else:
+            self.resize(1200, 768)
         
         # Main widget and layout
         main_widget = QWidget()
@@ -104,7 +113,7 @@ class DuplicateFinderApp(QMainWindow):
         self.preview_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.splitter.addWidget(self.preview_label)
         
-        self.splitter.setSizes([700, 324])
+        self.splitter.setSizes([850, 350])
         
         # Bottom Panel
         bottom_panel = QHBoxLayout()
