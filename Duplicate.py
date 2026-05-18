@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 from scanner import scan_directory
 
@@ -130,10 +130,14 @@ class DuplicateFinderApp(QMainWindow):
         self.trash_btn.clicked.connect(self.move_to_trash)
         self.trash_btn.setEnabled(False)
         
+        self.exit_btn = QPushButton("Exit")
+        self.exit_btn.clicked.connect(self.close)
+        
         bottom_panel.addWidget(self.status_label)
         bottom_panel.addStretch()
         bottom_panel.addWidget(self.delete_empty_checkbox)
         bottom_panel.addWidget(self.trash_btn)
+        bottom_panel.addWidget(self.exit_btn)
         layout.addLayout(bottom_panel)
         
         self.scanner_thread = None
